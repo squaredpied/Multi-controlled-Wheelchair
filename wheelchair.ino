@@ -1,12 +1,23 @@
 #include <SoftwareSerial.h>
 //#include "VoiceRecognitionV3.h"
-#include "VoiceRecognitionV4.h"
+#include "VoiceRecognitionV4.h" //voice recognition version 4
+#include <NewPing.h> //for ultrasonic sensor
+
 //pins for the X and Y axes of the joystick
 #define joyX A0
 #define joyY A1
 #define deadzone 50
 #define statX 518
 #define statY 515
+
+//speed of the wheelchair (PWM that will be used)
+#define SPEED 80
+
+//ultrasonic sensors params
+#define SONAR_NUM      4 // Number of sensors.
+#define MAX_DISTANCE 200 // Maximum distance (in cm) to ping.
+#define PING_INTERVAL 33 // Milliseconds between sensor pings (29ms is about the min to avoid cross-sensor echo).
+
 
 int static_variable=500;
 
@@ -39,6 +50,24 @@ int SensorTrig_left=15; //The left facing ultrasonic sensor trig pin should be c
 int SensorEcho_left=16; //The left facing ultrasonic sensor echo pin should be connected to pin 16 of the Arduino
 int SensorTrig_right=17; //The right facing ultrasonic sensor trig pin should be connected to pin 17 of the Arduino
 int SensorEcho_right=18; //The right facin g ultrasonic sensor echo pin should be connected to pin 18 of the Arduino
+
+//Ultrasonic sensors Setups
+NewPing ultrasonic_sensors[SONAR_NUM]={
+  NewPing(SensorTrig_front,SensorEcho_front), //ultrasonic sensor for the front
+  NewPing(SensorTrig_back,SensorEcho_back), //ultrasonic sensor for the back
+  NewPing(SensorTrig_left, SensorEcho_left), //ultrasonic sensor for the left
+  NewPing(SensorTrig_right,SensorEcho_right) //ultrasonic sensor for the right
+}
+
+unsigned long pingTimer[SONAR_NUM]; // Holds the times when the next ping should happen for each sensor.
+unsigned int freezone[SONAR_NUM]=[1,1,1,1];         // Keeps the value that allows movement in all directions. 1=free to move, 0=don't move
+/*0 element: front
+1 element: back
+2 element: left
+3 element: right
+*/
+uint8_t currentSensor = 0;          // Keeps track of which sensor is active.
+
 
 //voice recognition config params
 
@@ -148,6 +177,11 @@ void setup() {
   //bluetooth serial connection
   Serial2.begin(9600);
   
+  pingTimer[0] = millis() + 75;           // First ping starts at 75ms, gives time for the Arduino to chill before starting.
+  for (uint8_t i = 1; i < SONAR_NUM; i++) // Set the starting time for each sensor.
+    pingTimer[i] = pingTimer[i - 1] + PING_INTERVAL;
+
+  //voice recognition elechouse
   Serial.println("Elechouse Voice Recognition V3 Module\r\nControl LED sample");
   
     
@@ -184,18 +218,59 @@ void setup() {
 void motor_control(int LeftPWM, int RightPWM){
   if (LeftPWM>0 && RightPWM>0){
     Serial.println("Forwards");
+    if (freezone[0]==1)
+    {
+      //move forwards
+
+    }
+    else
+    {
+      //stop the motor
+
+    }
+    
   }    
   else if (LeftPWM>0 && RightPWM==0){
     Serial.println("Going Right");
+    if (freezone[3]==1)
+    {
+      //move right
+
+    }
+    else
+    {
+      //stop the motor
+
+    }
   }
   else if(LeftPWM==0 && RightPWM>0){
     Serial.println("Going Left");
+    if (freezone[2]==1)
+    {
+      //move left
+
+    }
+    else
+    {
+      //stop the motor
+
+    }
   }
   else if (LeftPWM==0 && RightPWM==0){
     Serial.println("Stop");
   }
   else{
     Serial.println("Reverse");
+    if (freezone[1]==1)
+    {
+      //going reverse
+
+    }
+    else
+    {
+      //stop the motor
+
+    }
   }    
 }
 
@@ -229,8 +304,12 @@ void button_actions(){
     ++mode;
     if (mode==3){
       mode=0;
-    }    
+    }
+    for (uint8_t i = 0; i < SONAR_NUM; i++) pingTimer[i] = -1;    //stop ping for ultrasonic sensors
     delay(50);
+    //starts pinging of ultrasonic sensors
+    pingTimer[0] = millis();
+    for (uint8_t i = 1; i < SONAR_NUM; i++) pingTimer[i] = pingTimer[i - 1] + PING_INTERVAL;
   }
   lastmodebutton_state=modebutton_reading;
 
@@ -449,6 +528,16 @@ mode 2: smartphone control
 */
 
 void loop() {
+  for (uint8_t i = 0; i < SONAR_NUM; i++) { // Loop through all the sensors.
+    if (millis() >= pingTimer[i]) {         // Is it this sensor's time to ping?
+      pingTimer[i] += PING_INTERVAL * SONAR_NUM;  // Set next time this sensor will be pinged.
+      sonar[currentSensor].timer_stop();          // Make sure previous timer is canceled before starting a new ping (insurance).
+      currentSensor = i;                          // Sensor being accessed.
+      cm[currentSensor] = 0;                      // Make distance zero in case there's no ping echo for this sensor.
+      sonar[currentSensor].ping_timer(echoCheck); // Do the ping (processing continues, interrupt will call echoCheck to look for echo).
+    }
+  }
+
   button_actions();
   //joystick control
   switch(mode){
@@ -473,4 +562,24 @@ void loop() {
       break;      
     }
   }  
+}
+
+void echoCheck() {
+  if (sonar[currentSensor].check_timer())
+    pingResult(currentSensor, sonar[currentSensor].ping_result / US_ROUNDTRIP_CM);
+}
+
+void pingResult(uint8_t sensor, int cm) {
+  // The following code would be replaced with your code that does something with the ping result.
+  if (cm<40){
+    freezone[sensor]=0;
+  }
+  else
+  freezone[sensor]=1;
+  /*
+  Serial.print(sensor);
+  Serial.print(" ");
+  Serial.print(cm);
+  Serial.println("cm");
+  */
 }
