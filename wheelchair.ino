@@ -11,16 +11,23 @@
 #define statY 515
 
 //speed of the wheelchair (PWM that will be used)
-#define SPEED 80
+#define SPEED 30
 
 //ultrasonic sensors params
 #define SONAR_NUM      4 // Number of sensors.
 #define MAX_DISTANCE 200 // Maximum distance (in cm) to ping.
-#define PING_INTERVAL 33 // Milliseconds between sensor pings (29ms is about the min to avoid cross-sensor echo).
+#define PING_INTERVAL 35 // Milliseconds between sensor pings (29ms is about the min to avoid cross-sensor echo).
 #define US_ROUNDTRIP_CM 57
 
+//motor drivers
+int leftpwm_leftmotor=4;
+int rightpwm_leftmotor=13;
+int leftpwm_rightmotor=9;
+int rightpwm_rightmotor=10;
+
+
 int static_variable=500;
-int lastRed;
+int lastRed = 0;
 
 
 int changemode_button=22; //button for changing the mode of operation of the wheelchair (input); connect to pin 12
@@ -38,7 +45,7 @@ int led_joy=8; //LED for showing that joystick mode is activated; use pin 8
 int led_voice=7; //LED for showing that voice command mode is activated; use pin 7
 int led_phone=1; //LED to show that phone command mode is activated; use pin 1
 
-int mode=0; //this shows which mode of control will be used for the wheelchair; the default state is voice control
+int mode=2; //this shows which mode of control will be used for the wheelchair; the default state is voice control
 int lastmodebutton_state=HIGH;
 int Rxbyte=0; //received byte from Python
 
@@ -143,6 +150,7 @@ void printVR(uint8_t *buf)
 
 
 void setup() {
+  TCCR2B = TCCR2B & B11111000 | B00000011;  // for  PWM frequency of 980.39 Hz
   
   pinMode(changemode_button, INPUT_PULLUP);
   
@@ -184,7 +192,7 @@ void setup() {
     pingTimer[i] = pingTimer[i - 1] + PING_INTERVAL;
 
   //voice recognition elechouse
-  Serial.println("Elechouse Voice Recognition V3 Module\r\nControl LED sample");
+  /* Serial.println("Elechouse Voice Recognition V3 Module\r\nControl LED sample");
   
     
   if(myVR.clear() == 0){
@@ -213,69 +221,113 @@ void setup() {
 
   if(myVR.load((uint8_t)right) >= 0){
     Serial.println("right loaded");
-  }
+  } */
 }
 
 //function to control the left and right motor
 void motor_control(int LeftPWM, int RightPWM){
   if (LeftPWM>0 && RightPWM>0){
-    Serial.println("Forwards");    
+    //Serial.println("Forwards");    
     if (freezone[0]==1)
     {
       //move forwards
-      Serial.println("Forwards");
+      int newspeed=map(LeftPWM, 0, 255, 0, SPEED);      
+      Serial.print("Forwards ");
+      Serial.println(newspeed);
+
+      analogWrite(leftpwm_leftmotor,0);
+      analogWrite(leftpwm_rightmotor,0);
+      analogWrite(rightpwm_leftmotor, newspeed);
+      analogWrite(rightpwm_rightmotor, newspeed);                  
     }
     else
     {
       //stop the motor
-      
-      //Serial.println("Stop");
+      analogWrite(leftpwm_leftmotor, 0);
+      analogWrite(leftpwm_rightmotor, 0);
+      analogWrite(rightpwm_leftmotor, 0);
+      analogWrite(rightpwm_rightmotor, 0);
+      Serial.println("Stop");
     }
     
   }    
   else if (LeftPWM>0 && RightPWM==0){
-    Serial.println("Going Right");
+    //Serial.println("Going Right");
     if (freezone[3]==1)
     {
       //move right
-      Serial.println("Going Right");
+      int newspeed=map(LeftPWM, 0, 255, 0, SPEED);
+      Serial.print("Going Right ");
+      Serial.println(newspeed);
+      analogWrite(leftpwm_leftmotor, 0);
+      analogWrite(leftpwm_rightmotor, 0);
+      analogWrite(rightpwm_leftmotor, newspeed);
+      analogWrite(rightpwm_rightmotor, 0);
     }
     else
     {
       //stop the motor
-      //Serial.println("Stop");
+      Serial.println("Stop");
+      analogWrite(leftpwm_leftmotor, 0);
+      analogWrite(leftpwm_rightmotor, 0);
+      analogWrite(rightpwm_leftmotor, 0);
+      analogWrite(rightpwm_rightmotor, 0);
     }
   }
   else if(LeftPWM==0 && RightPWM>0){
-    Serial.println("Going Left");
+    //Serial.println("Going Left");
     if (freezone[2]==1)
     {
       //move left
-      Serial.println("Going Left");
-
+      int newspeed=map(RightPWM, 0, 255, 0, SPEED);
+      Serial.print("Going Left ");
+      Serial.println(newspeed);
+      analogWrite(leftpwm_leftmotor, 0);
+      analogWrite(leftpwm_rightmotor, 0);
+      analogWrite(rightpwm_leftmotor, 0);
+      analogWrite(rightpwm_rightmotor, newspeed);
     }
     else
     {
       //stop the motor
-      //Serial.println("Stop");
+      Serial.println("Stop");
+      analogWrite(leftpwm_leftmotor, 0);
+      analogWrite(leftpwm_rightmotor, 0);
+      analogWrite(rightpwm_leftmotor, 0);
+      analogWrite(rightpwm_rightmotor, 0);
     }
   }
   else if (LeftPWM<0 && RightPWM<0){
-    Serial.println("Reverse");
+    //Serial.println("Reverse");
     if (freezone[1]==1)
     {
       //going reverse
-      Serial.println("Reverse");
+      int newspeed=-1*(LeftPWM);
+      newspeed=map(newspeed, 0, 255, 0, SPEED);
+      Serial.print("Reverse ");
+      Serial.println(newspeed);
+      analogWrite(leftpwm_leftmotor, newspeed);
+      analogWrite(leftpwm_rightmotor, newspeed);
+      analogWrite(rightpwm_leftmotor, 0);
+      analogWrite(rightpwm_rightmotor, 0);      
 
     }
     else
     {
       //stop the motor
-      //Serial.println("Stop");
+      Serial.println("Stop");
+      analogWrite(leftpwm_leftmotor, 0);
+      analogWrite(leftpwm_rightmotor, 0);
+      analogWrite(rightpwm_leftmotor, 0);
+      analogWrite(rightpwm_rightmotor, 0);
     }
   }
   else{
-    Serial.println("Stop");
+    Serial.println("Stop"); 
+    analogWrite(leftpwm_leftmotor, 0);
+    analogWrite(leftpwm_rightmotor, 0);
+    analogWrite(rightpwm_leftmotor, 0);
+    analogWrite(rightpwm_rightmotor, 0);
   }
   /*
   Serial.print(freezone[1]);
@@ -499,81 +551,47 @@ void pyVoice(){
 void smartphone_control(){
   if (Serial2.available()){
     Rxbyte=Serial2.read();
-    lastRed=Rxbyte;
-      switch(Rxbyte){
-      //left
-      case 1:
-      {
-        motor_control(0,255);
-        break;        
-      }
-      //right
-      case 2:
-      {
-        motor_control(255,0);
-        break;
-      }
-      //forward
-      case 3:
-      {
-        motor_control(255, 255);
-        break;
-      }
-      //backwards
-      case 4:
-      {
-        motor_control(-255, -255);
-        break;
-      }
-      //stop
-      case 5:
-      {
-        motor_control(0,0);
-        break;
-      }
-
-      default:
-        motor_control(0,0);
-        break;  
-    }
+    lastRed=Rxbyte;  
   }
-  switch(lastRed){
-      //left
-      case 1:
-      {
-        motor_control(0,255);
-        break;        
-      }
-      //right
-      case 2:
-      {
-        motor_control(255,0);
-        break;
-      }
-      //forward
-      case 3:
-      {
-        motor_control(255, 255);
-        break;
-      }
-      //backwards
-      case 4:
-      {
-        motor_control(-255, -255);
-        break;
-      }
-      //stop
-      case 5:
-      {
-        motor_control(0,0);
-        break;
-      }
-
-      default:
-        motor_control(0,0);
-        break;  
+  
+  //Serial.println(lastRed);
+  switch(lastRed) {
+    //left
+    case 1:
+    {
+      motor_control(0,255);
+      break;        
     }
-  //motor_control(0,0);  
+    //right
+    case 2:
+    {
+      motor_control(255,0);
+      break;
+    }
+    //forward
+    case 3:
+    {
+      motor_control(255, 255);
+      break;
+    }
+    //backwards
+    case 4:
+    {
+      motor_control(-255, -255);
+      break;
+    }
+    //stop
+    case 5:
+    {
+      motor_control(0,0);
+      break;
+    }
+
+    default:
+      motor_control(0,0);
+      break;  
+  }
+  
 }
 
 /*mode 0: voice control
@@ -582,40 +600,44 @@ mode 2: smartphone control
 */
 
 void loop() {
+ /*  long int time=millis(); 
   for (uint8_t i = 0; i < SONAR_NUM; i++) { // Loop through all the sensors.
     if (millis() >= pingTimer[i]) {         // Is it this sensor's time to ping?
       pingTimer[i] += PING_INTERVAL * SONAR_NUM;  // Set next time this sensor will be pinged.
       ultrasonic_sensors[currentSensor].timer_stop();          // Make sure previous timer is canceled before starting a new ping (insurance).
       currentSensor = i;                          // Sensor being accessed.
       cm[currentSensor] = 0;                      // Make distance zero in case there's no ping echo for this sensor.
-      ultrasonic_sensors[currentSensor].ping_timer(echoCheck); // Do the ping (processing continues, interrupt will call echoCheck to look for echo).
+      ultrasonic_sensors[currentSensor].ping_timer(echoCheck, MAX_DISTANCE); // Do the ping (processing continues, interrupt will call echoCheck to look for echo).
     }
-  }
-
+  } */
+  
   button_actions();
-  //joystick control
+  // //joystick control
   switch(mode){
-    //voice control mode
+  //   //voice control mode
     case 0:    
     {
-      //Serial.println("Mode 1");
+      // Serial.println("Mode 0");
       voiceControl();      
       break;
     }  
-    //joystick mode
-    case 1:
-    {
-      //Serial.println("Mode 2");
-      joystickControl();
-      break;
-    }
-    //smartphone control    
-    case 2:{
+  //joystick mode
+  case 1:
+  {
+    //Serial.println("Mode 2");
+    joystickControl();
+    break;
+  }
+  //smartphone control    
+    case 2: {
       //Serial.println("Mode 3");
       smartphone_control();
       break;      
     }
-  }  
+  }
+  /* long int duration = millis()-time;
+  Serial.print("Time: " );
+  Serial.println(duration); */    
 }
 
 void echoCheck() {
@@ -625,7 +647,13 @@ void echoCheck() {
 
 void pingResult(uint8_t sensor, int cm) {
   // The following code would be replaced with your code that does something with the ping result.
-  if (cm<20){
+   
+  if (cm<10){    
+/*     Serial.print("Sensor: ");
+    Serial.print(sensor);
+    Serial.print(" Meter: ");
+    Serial.print(cm); 
+    Serial.print("\n"); */
     freezone[sensor]=0;
   }
   else
