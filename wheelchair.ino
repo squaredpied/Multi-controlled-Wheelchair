@@ -17,29 +17,26 @@
 #define SONAR_NUM      4 // Number of sensors.
 #define MAX_DISTANCE 200 // Maximum distance (in cm) to ping.
 #define PING_INTERVAL 35 // Milliseconds between sensor pings (29ms is about the min to avoid cross-sensor echo).
-#define US_ROUNDTRIP_CM 57
+
 
 //motor drivers
-int leftpwm_leftmotor=4;
-int rightpwm_leftmotor=13;
-int leftpwm_rightmotor=9;
-int rightpwm_rightmotor=10;
+int leftpwm_leftmotor=4; // Arduino PWM output pin 4; connect to IBT-2 LPWM left motor
+int rightpwm_leftmotor=13; // Arduino PWM output pin 13; connect to IBT-2 RPWM left motor
+int leftpwm_rightmotor=9; // Arduino PWM output pin 9; connect to IBT-2 LPWM right motor
+int rightpwm_rightmotor=10;  // Arduino PWM output pin 10; connect to IBT-2 RPWM right motor
 
+
+float timeout=250; //for smooth acceleration (in milli)
+signed int lMotorSpeed=0, rMotorSpeed=0; //initial speed of both motors
 
 int static_variable=500;
 int lastRed = 0;
 
 
 int changemode_button=22; //button for changing the mode of operation of the wheelchair (input); connect to pin 12
-int buzzer_button=13; //button for activating the buzzer; connect to pin 13
+int buzzer_button=12; //button for activating the buzzer; connect to pin 12
 int buzzer_output = 11; //the buzzer should be connected to pin 11
 
-
-int LPWM_Output_L = 5; // Arduino PWM output pin 5; connect to IBT-2 pin 1 (RPWM)
-int RPWM_Output_L = 6; // Arduino PWM output pin 6; connect to IBT-2 pin 2 (LPWM)
-
-int LPWM_Output_R = 10; // Arduino PWM output pin 5; connect to IBT-2 pin 1 (RPWM)
-int RPWM_Output_R = 9; // Arduino PWM output pin 6; connect to IBT-2 pin 2 (LPWM)
 
 int led_joy=8; //LED for showing that joystick mode is activated; use pin 8
 int led_voice=7; //LED for showing that voice command mode is activated; use pin 7
@@ -157,16 +154,21 @@ void setup() {
   pinMode(buzzer_button, INPUT_PULLUP);
   pinMode(buzzer_output, OUTPUT);
   
-  pinMode(LPWM_Output_L, OUTPUT);
-  pinMode(RPWM_Output_L, OUTPUT);
+  pinMode(leftpwm_leftmotor, OUTPUT);
+  pinMode(rightpwm_leftmotor, OUTPUT);
 
-  pinMode(LPWM_Output_R, OUTPUT);
-  pinMode(RPWM_Output_R, OUTPUT);
+  pinMode(leftpwm_rightmotor, OUTPUT);
+  pinMode(rightpwm_rightmotor, OUTPUT);
 
   pinMode(led_joy, OUTPUT);
   pinMode(led_voice, OUTPUT);
   pinMode(led_phone, OUTPUT);
 
+  digitalWrite(leftpwm_leftmotor, LOW);
+  digitalWrite(rightpwm_leftmotor, LOW);
+  digitalWrite(leftpwm_rightmotor, LOW);
+  digitalWrite(rightpwm_rightmotor, LOW);  
+  
   //ultrasonic sensors setup
 /*  
   pinMode(SensorTrig_front, OUTPUT);
@@ -224,20 +226,186 @@ void setup() {
   } */
 }
 
+void left_mot(int sensorValue){
+  if (sensorValue < 0)
+  {
+    // reverse rotation
+    int reversePWM = -(sensorValue);
+    analogWrite(leftpwm_leftmotor, reversePWM);
+    analogWrite(rightpwm_leftmotor, 0);
+  }
+  else
+  {
+    // forward rotation
+    analogWrite(leftpwm_rightmotor, 0);
+    analogWrite(rightpwm_rightmotor, sensorValue);
+  }
+
+  Serial.print("Left Motor Speed: ");
+  Serial.print(sensorValue);
+}
+
+void right_mot(int sensorValue){
+  if (sensorValue < 0)
+  {
+    // reverse rotation
+    int reversePWM = -(sensorValue);
+    analogWrite(LPWM_Output_R, reversePWM);
+    analogWrite(RPWM_Output_R, 0);
+  }
+  else
+  {
+    // forward rotation
+    analogWrite(LPWM_Output_R, 0);
+    analogWrite(RPWM_Output_R, sensorValue);
+  }
+
+  Serial.print("\t Right Motor Speed: ");
+  Serial.println(sensorValue);
+
+}
+
+
+
+
 //function to control the left and right motor
-void motor_control(int LeftPWM, int RightPWM){
+void motor_control(int LeftPWM, int RightPWM)
+{
+  /*
+  unsigned long start=millis();
+  unsigned long deltaT=0;
+  signed int lPrevSpeed = lMotorSpeed;
+  signed int rPrevSpeed = rMotorSpeed;
+
+  if (LeftPWM>0 && RightPWM>0 && freezone[0]==1)
+  {
+    //Serial.println("Forwards");
+    int newspeed=map(LeftPWM, 0, 255, 0, SPEED);      
+    //Serial.print("Forwards ");
+    //Serial.println(newspeed);
+
+    do
+    {
+      deltaT = millis() - start;
+      rMotorSpeed = min(newspeed, (deltaT/timeout * newspeed + rPrevSpeed));
+      lMotorSpeed = min(newspeed, (deltaT/timeout * newspeed + lPrevSpeed));
+    }
+    while((lMotorSpeed != newspeed || rMotorSpeed != newspeed) && deltaT <= timeout);
+  }
+
+  else if(LeftPWM==0 && RightPWM>0 && freezone[2]==1)
+  {
+    //Serial.println("Going Left");
+    //move left
+    int newspeed=map(RightPWM, 0, 255, 0, SPEED);
+    //Serial.print("Going Left ");
+    //Serial.println(newspeed);
+    
+    do
+    {
+      deltaT = millis() - start;
+      
+      //rightspeed update
+      rMotorSpeed = min(newspeed, int(deltaT/timeout * newspeed + rPrevSpeed));
+      
+      //left speed update
+      if(lPrevSpeed <0)                    
+      lMotorSpeed = min(0, int(deltaT/timeout * newspeed + lPrevSpeed));
+      else if (lPrevSpeed >0)              
+      lMotorSpeed = max(0, int(-1*deltaT/timeout * newspeed + lPrevSpeed));
+    }
+    while((lMotorSpeed != 0 || rMotorSpeed != newspeed)&& deltaT <= timeout);
+  }
+  
+  else if (LeftPWM>0 && RightPWM==0 && freezone[3]==1)
+  {
+    //Serial.println("Going Right");
+    //move right
+    int newspeed=map(LeftPWM, 0, 255, 0, SPEED);
+    //Serial.print("Going Right ");
+    //Serial.println(newspeed);
+
+    do
+    {
+      deltaT = millis() - start;
+      
+      //rightspeed update
+      if(rPrevSpeed <0)                    
+      rMotorSpeed = min(0, int(deltaT/timeout * newspeed + rPrevSpeed));
+      else if (rPrevSpeed >0)              
+      rMotorSpeed = max(0, int(-1*deltaT/timeout * newspeed + rPrevSpeed));
+      //left speed update
+      lMotorSpeed = min(newspeed, int(deltaT/timeout * newspeed + lPrevSpeed));
+    }
+    while((lMotorSpeed != newspeed || rMotorSpeed != 0) && deltaT <= timeout);
+  }
+  
+  else if (LeftPWM<0 && RightPWM<0 && freezone[1]==1)
+  {
+    //Serial.println("Reverse");
+    //going reverse
+    int newspeed=-1*(LeftPWM);
+    //newspeed=map(newspeed, 0, 255, 0, SPEED);
+    newspeed=20;
+    Serial.print("Reverse ");
+    Serial.println(newspeed);
+    
+    do
+    {
+      deltaT = millis() - start;
+      rMotorSpeed = max(newspeed, (rPrevSpeed - deltaT/timeout * newspeed));
+      lMotorSpeed = max(newspeed, (lPrevSpeed - deltaT/timeout * newspeed));
+    }
+    while((lMotorSpeed != newspeed || rMotorSpeed != newspeed) && deltaT <= timeout);
+  }
+
+  else
+  {
+    //stop the motor
+    //Serial.println("Stop");
+    
+    do
+    {
+      deltaT = millis() - start;
+      //rightspeed update
+      if(rPrevSpeed <0)                    
+      rMotorSpeed = min(0, int(deltaT/timeout * SPEED + rPrevSpeed));
+      else if (rPrevSpeed >0)              
+      rMotorSpeed = max(0, int(-1*deltaT/timeout * SPEED + rPrevSpeed));
+      //left speed update
+      if(lPrevSpeed <0)                    
+      lMotorSpeed = min(0, int(deltaT/timeout * SPEED + lPrevSpeed));
+      else if (lPrevSpeed >0)              
+      lMotorSpeed = max(0, int(-1*deltaT/timeout * SPEED + lPrevSpeed));
+    }
+    while((lMotorSpeed != 0 || rMotorSpeed != 0) && deltaT <= timeout);  
+  }
+
+  left_mot(lMotorSpeed);
+  right_mot(rMotorSpeed);
+  
+  
+  Serial.print("Left Motor Speed: ");
+  Serial.print(lMotorSpeed);
+  Serial.print("\t Right Motor Speed: ");
+  Serial.println(rMotorSpeed);
+
+  */
+  
+  
   if (LeftPWM>0 && RightPWM>0){
-    //Serial.println("Forwards");    
+    //Serial.println("Forwards");
     if (freezone[0]==1)
     {
       //move forwards
       int newspeed=map(LeftPWM, 0, 255, 0, SPEED);      
       Serial.print("Forwards ");
       Serial.println(newspeed);
-
       analogWrite(leftpwm_leftmotor,0);
+      //-5
+      //+2
       analogWrite(leftpwm_rightmotor,0);
-      analogWrite(rightpwm_leftmotor, newspeed);
+      analogWrite(rightpwm_leftmotor, newspeed-7);
       analogWrite(rightpwm_rightmotor, newspeed);                  
     }
     else
@@ -303,10 +471,12 @@ void motor_control(int LeftPWM, int RightPWM){
     {
       //going reverse
       int newspeed=-1*(LeftPWM);
-      newspeed=map(newspeed, 0, 255, 0, SPEED);
+      //newspeed=map(newspeed, 0, 255, 0, SPEED);
+      newspeed=20;
       Serial.print("Reverse ");
       Serial.println(newspeed);
-      analogWrite(leftpwm_leftmotor, newspeed);
+      analogWrite(leftpwm_leftmotor, newspeed+4);
+      //-4
       analogWrite(leftpwm_rightmotor, newspeed);
       analogWrite(rightpwm_leftmotor, 0);
       analogWrite(rightpwm_rightmotor, 0);      
@@ -329,7 +499,8 @@ void motor_control(int LeftPWM, int RightPWM){
     analogWrite(rightpwm_leftmotor, 0);
     analogWrite(rightpwm_rightmotor, 0);
   }
-  /*
+
+/*
   Serial.print(freezone[1]);
   Serial.print(" , ");
   Serial.println(freezone[0]);
@@ -365,6 +536,11 @@ void button_actions(){
   int modebutton_reading=digitalRead(changemode_button);
   if (lastmodebutton_state!=modebutton_reading && modebutton_reading==LOW){
     ++mode;
+    if (mode==2)
+    {
+      Serial2.end();
+      Serial2.begin(9600);     
+    }
     if (mode==3){
       mode=0;
     }
@@ -600,7 +776,7 @@ mode 2: smartphone control
 */
 
 void loop() {
- /*  long int time=millis(); 
+  long int time=millis(); 
   for (uint8_t i = 0; i < SONAR_NUM; i++) { // Loop through all the sensors.
     if (millis() >= pingTimer[i]) {         // Is it this sensor's time to ping?
       pingTimer[i] += PING_INTERVAL * SONAR_NUM;  // Set next time this sensor will be pinged.
@@ -609,7 +785,7 @@ void loop() {
       cm[currentSensor] = 0;                      // Make distance zero in case there's no ping echo for this sensor.
       ultrasonic_sensors[currentSensor].ping_timer(echoCheck, MAX_DISTANCE); // Do the ping (processing continues, interrupt will call echoCheck to look for echo).
     }
-  } */
+  } 
   
   button_actions();
   // //joystick control
@@ -648,18 +824,62 @@ void echoCheck() {
 void pingResult(uint8_t sensor, int cm) {
   // The following code would be replaced with your code that does something with the ping result.
    
-  if (cm<10){    
+  if (sensor==0){
+    if (cm>70)
+    {
+      freezone[sensor]=1;
+    }
+
+    else
+    {
+      freezone[sensor]=0;
+    }
+  }
+
+  if (sensor==1){
+    if (cm>60)
+    {
+      freezone[sensor]=1;
+    }
+
+    else{
+      freezone[sensor]=0;
+    }
+  }
+
+  if (sensor==2){
+    if (cm>20)
+    {
+      freezone[sensor]=1;
+    }
+
+    else{
+      freezone[sensor]=0;
+    }
+  }
+
+  if (sensor==3){
+    if (cm>20)
+    {
+      freezone[sensor]=1;
+    }
+
+    else{
+      freezone[sensor]=0;
+    }
+  }
+      
 /*     Serial.print("Sensor: ");
     Serial.print(sensor);
     Serial.print(" Meter: ");
     Serial.print(cm); 
-    Serial.print("\n"); */
+    Serial.print("\n");
     freezone[sensor]=0;
   }
   else
   {
     freezone[sensor]=1;
-  }
+  } */
   
 /*
   Serial.print(sensor);
