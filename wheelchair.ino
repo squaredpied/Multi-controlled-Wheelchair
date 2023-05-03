@@ -66,6 +66,11 @@ NewPing ultrasonic_sensors[SONAR_NUM]={
 
 unsigned long pingTimer[SONAR_NUM]; // Holds the times when the next ping should happen for each sensor
 int freezone[4]={1,1,1,1};         // Keeps the value that allows movement in all directions. 1=free to move, 0=don't move
+
+int frontdis_us=70; //accepted distance between the front us sensor and the obstacle
+int backdis_us=60; //accepted distance between the back us sensor and the obstacle
+int side_us=20; //accepted distance between the side us sensors and the obstacle
+
 /*0 element: front
 1 element: back
 2 element: left
@@ -265,9 +270,6 @@ void right_mot(int sensorValue){
 
 }
 
-
-
-
 //function to control the left and right motor
 void motor_control(int LeftPWM, int RightPWM)
 {
@@ -392,7 +394,6 @@ void motor_control(int LeftPWM, int RightPWM)
 
   */
   
-  
   if (LeftPWM>0 && RightPWM>0){
     //Serial.println("Forwards");
     if (freezone[0]==1)
@@ -480,7 +481,6 @@ void motor_control(int LeftPWM, int RightPWM)
       analogWrite(leftpwm_rightmotor, newspeed);
       analogWrite(rightpwm_leftmotor, 0);
       analogWrite(rightpwm_rightmotor, 0);      
-
     }
     else
     {
@@ -555,7 +555,7 @@ void button_actions(){
   mode_lights();
   
   //activates the buzzer when the button is pressed
-  int buzzer_state=!(digitalRead(buzzer_output));
+  int buzzer_state=!(digitalRead(buzzer_button));
   digitalWrite(buzzer_output, buzzer_state);  
 }
 
@@ -767,7 +767,6 @@ void smartphone_control(){
       motor_control(0,0);
       break;  
   }
-  
 }
 
 /*mode 0: voice control
@@ -825,19 +824,18 @@ void pingResult(uint8_t sensor, int cm) {
   // The following code would be replaced with your code that does something with the ping result.
    
   if (sensor==0){
-    if (cm>70)
+    if (cm>frontdis_us)
     {
       freezone[sensor]=1;
     }
-
     else
     {
       freezone[sensor]=0;
     }
   }
 
-  if (sensor==1){
-    if (cm>60)
+  else if (sensor==1){
+    if (cm>backdis_us)
     {
       freezone[sensor]=1;
     }
@@ -847,19 +845,9 @@ void pingResult(uint8_t sensor, int cm) {
     }
   }
 
-  if (sensor==2){
-    if (cm>20)
-    {
-      freezone[sensor]=1;
-    }
-
-    else{
-      freezone[sensor]=0;
-    }
-  }
-
-  if (sensor==3){
-    if (cm>20)
+  else
+  {
+    if (cm>sidedis_us)
     {
       freezone[sensor]=1;
     }
